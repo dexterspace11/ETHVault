@@ -1,42 +1,21 @@
 import streamlit as st
+import streamlit.components.v1 as components
 from web3 import Web3
-from streamlit_etherconnect import ether_connect
+from eth_account import Account
 
 # -------------------------------
 # Configuration
 # -------------------------------
 st.set_page_config(page_title="ETH Vault Admin Panel", layout="wide")
 
-# RPC URL (Example for local Ganache or Sepolia Testnet RPC)
-RPC_URL = "https://sepolia.infura.io/v3/YOUR_INFURA_PROJECT_ID"  # 🔥 CHANGE THIS
-CONTRACT_ADDRESS = "0x4d1748A9997A9E201d65A544d79189dACc9485E2"  # 🔥 YOUR Vault Address
+RPC_URL = "https://mainnet.infura.io/v3/e0fcce634506410b87fc31064eed915a"  # <-- Change this to your Infura/Alchemy RPC
+CONTRACT_ADDRESS = "0x4d1748A9997A9E201d65A544d79189dACc9485E2"  # <-- Your Vault contract
 
-# Load Web3
+# Web3
 web3 = Web3(Web3.HTTPProvider(RPC_URL))
 
-# ABI
-contract_abi = [  
-    {
-        "inputs": [],
-        "stateMutability": "nonpayable",
-        "type": "constructor"
-    },
-    {
-        "inputs": [],
-        "name": "admin",
-        "outputs": [
-            {"internalType": "address", "name": "", "type": "address"}
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "autoCompoundAll",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
+# ABI - Insert your ETHVault ABI below
+contract_abi = [
     {
         "inputs": [],
         "name": "deposit",
@@ -45,14 +24,10 @@ contract_abi = [
         "type": "function"
     },
     {
-        "inputs": [{"internalType": "address", "name": "userAddr", "type": "address"}],
-        "name": "getUserInfo",
-        "outputs": [
-            {"internalType": "uint256", "name": "depositBalance", "type": "uint256"},
-            {"internalType": "uint256", "name": "currentRewards", "type": "uint256"},
-            {"internalType": "bool", "name": "autoCompounding", "type": "bool"}
-        ],
-        "stateMutability": "view",
+        "inputs": [{"internalType": "uint256", "name": "amount", "type": "uint256"}],
+        "name": "withdraw",
+        "outputs": [],
+        "stateMutability": "nonpayable",
         "type": "function"
     },
     {
@@ -63,30 +38,20 @@ contract_abi = [
         "type": "function"
     },
     {
-        "inputs": [],
-        "name": "getDonationPool",
-        "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+        "inputs": [{"internalType": "address", "name": "userAddr", "type": "address"}],
+        "name": "getUserInfo",
+        "outputs": [
+            {"internalType": "uint256", "name": "depositBalance", "type": "uint256"},
+            {"internalType": "uint256", "name": "currentRewards", "type": "uint256"},
+            {"internalType": "bool", "name": "autoCompounding", "type": "bool"},
+        ],
         "stateMutability": "view",
         "type": "function"
     },
     {
         "inputs": [],
-        "name": "enableAutoCompounding",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "disableAutoCompounding",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [{"internalType": "address", "name": "userAddress", "type": "address"}],
-        "name": "calculateRewards",
-        "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+        "name": "admin",
+        "outputs": [{"internalType": "address", "name": "", "type": "address"}],
         "stateMutability": "view",
         "type": "function"
     },
@@ -99,135 +64,94 @@ contract_abi = [
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
-    },
-    {
-        "inputs": [{"internalType": "uint256", "name": "amount", "type": "uint256"}],
-        "name": "withdraw",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "stateMutability": "payable",
-        "type": "receive"
     }
 ]
 
-# Contract instance
 contract = web3.eth.contract(address=Web3.to_checksum_address(CONTRACT_ADDRESS), abi=contract_abi)
 
 # -------------------------------
-# Streamlit App
+# Inject JavaScript for Metamask connection
 # -------------------------------
-
 st.title("💎 ETH Vault - Admin & User Panel")
 
-# Metamask connect
-address = ether_connect()
+connect_html = """
+<script>
+async function connect() {
+    if (window.ethereum) {
+        try {
+            const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+            const account = accounts[0];
+            const display = document.getElementById('account_display');
+            display.innerText = account;
+            window.parent.postMessage({funcName: 'setAccount', address: account}, "*");
+        } catch (error) {
+            console.error(error);
+        }
+    } else {
+        alert('Please install Metamask!');
+    }
+}
+</script>
 
-if address:
-    st.success(f"Connected: {address}")
+<button onclick="connect()">🦊 Connect Metamask</button>
+<p id="account_display" style="color:green; font-weight:bold; font-size:20px;"></p>
+"""
+
+components.html(connect_html, height=200)
+
+# Wallet connection simulation (manual input until full two-way comms is done)
+account = st.text_input("Paste your connected Metamask Wallet Address", key="wallet_address")
+
+# -------------------------------
+# Main Interface
+# -------------------------------
+if account:
+    st.success(f"Connected Wallet: {account}")
 
     admin_address = contract.functions.admin().call()
+    is_admin = (account.lower() == admin_address.lower())
 
     st.sidebar.title("Navigation")
-    page = st.sidebar.radio("Go to", ["Deposit", "Withdraw", "View Info", "Admin Panel"])
+    page = st.sidebar.radio("Select Page", ["Deposit", "Withdraw", "View My Info", "Admin Panel"])
 
-    st.sidebar.markdown(f"**Vault Address:** `{CONTRACT_ADDRESS}`")
-
-    # Deposit
     if page == "Deposit":
-        st.header("📥 Deposit ETH")
-
-        deposit_amount = st.number_input("Enter deposit amount (ETH)", min_value=0.0001, step=0.0001)
-
+        st.subheader("📥 Deposit ETH")
+        eth_amount = st.number_input("Amount to Deposit (ETH)", min_value=0.001, step=0.001, format="%.5f")
         if st.button("Deposit"):
-            tx = {
-                'from': address,
-                'to': CONTRACT_ADDRESS,
-                'value': web3.to_wei(deposit_amount, 'ether'),
-                'gas': 200000
-            }
-            st.info(f"Send {deposit_amount} ETH to Vault address manually using your wallet.")
+            st.warning("⚡ Please deposit manually to the contract address using Metamask.")
+            st.info(f"Contract Address: {CONTRACT_ADDRESS}")
 
-    # Withdraw
-    if page == "Withdraw":
-        st.header("📤 Withdraw ETH")
+    elif page == "Withdraw":
+        st.subheader("📤 Withdraw from Vault")
+        withdraw_amount = st.number_input("Amount to Withdraw (ETH)", min_value=0.001, step=0.001, format="%.5f")
+        if st.button("Request Withdraw"):
+            st.warning("⚡ Withdrawal will require Metamask interaction - to be enabled soon.")
+            st.info("Please use Remix or Frontend integration to withdraw.")
 
-        withdraw_amount = st.number_input("Enter amount to withdraw (ETH)", min_value=0.0001, step=0.0001)
-
-        if st.button("Withdraw"):
-            try:
-                nonce = web3.eth.get_transaction_count(address)
-                tx = contract.functions.withdraw(web3.to_wei(withdraw_amount, 'ether')).build_transaction({
-                    'from': address,
-                    'nonce': nonce,
-                    'gas': 300000
-                })
-                st.info("Sign this withdraw transaction in your Metamask wallet manually.")
-            except Exception as e:
-                st.error(f"Error: {e}")
-
-    # View Info
-    if page == "View Info":
-        st.header("🔎 View My Info")
-
-        user_info = contract.functions.getUserInfo(address).call()
-
-        st.subheader("My Vault Status")
-        st.metric("Deposited ETH", f"{web3.from_wei(user_info[0], 'ether')} ETH")
-        st.metric("Accrued Rewards", f"{web3.from_wei(user_info[1], 'ether')} ETH")
-        st.metric("Auto-Compounding Enabled", user_info[2])
-
-        if user_info[2]:
-            if st.button("Disable Auto-Compounding"):
-                nonce = web3.eth.get_transaction_count(address)
-                tx = contract.functions.disableAutoCompounding().build_transaction({
-                    'from': address,
-                    'nonce': nonce,
-                    'gas': 200000
-                })
-                st.info("Sign the disable auto-compounding transaction manually.")
-        else:
-            if st.button("Enable Auto-Compounding"):
-                nonce = web3.eth.get_transaction_count(address)
-                tx = contract.functions.enableAutoCompounding().build_transaction({
-                    'from': address,
-                    'nonce': nonce,
-                    'gas': 200000
-                })
-                st.info("Sign the enable auto-compounding transaction manually.")
+    elif page == "View My Info":
+        st.subheader("🧾 My Vault Info")
+        try:
+            depositBalance, currentRewards, autoCompounding = contract.functions.getUserInfo(account).call()
+            st.metric("Deposit Balance (ETH)", web3.from_wei(depositBalance, 'ether'))
+            st.metric("Current Rewards (ETH)", web3.from_wei(currentRewards, 'ether'))
+            st.metric("Auto-Compounding", "Enabled" if autoCompounding else "Disabled")
+        except Exception as e:
+            st.error("Error fetching user info. Make sure your address has interacted with the contract.")
 
         st.divider()
-
-        st.subheader("📊 Vault Overview")
         total_eth = contract.functions.getTotalETH().call()
-        donation_pool = contract.functions.getDonationPool().call()
+        st.metric("Total ETH in Vault", web3.from_wei(total_eth, 'ether'))
 
-        st.metric("Total ETH in Vault", f"{web3.from_wei(total_eth, 'ether')} ETH")
-        st.metric("Donation Pool", f"{web3.from_wei(donation_pool, 'ether')} ETH")
-
-    # Admin Panel
-    if page == "Admin Panel":
-        st.header("🛠 Admin Controls")
-
-        if address.lower() == admin_address.lower():
-            target = st.text_input("Target address to send ETH")
-            send_amount = st.number_input("Amount to send externally (ETH)", min_value=0.0001, step=0.0001)
-
-            if st.button("Send External Transfer"):
-                try:
-                    nonce = web3.eth.get_transaction_count(address)
-                    tx = contract.functions.sendExternal(Web3.to_checksum_address(target), web3.to_wei(send_amount, 'ether')).build_transaction({
-                        'from': address,
-                        'nonce': nonce,
-                        'gas': 300000
-                    })
-                    st.info("Sign this external transfer transaction manually in Metamask.")
-                except Exception as e:
-                    st.error(f"Error: {e}")
+    elif page == "Admin Panel":
+        if not is_admin:
+            st.error("Only Admin can access this page.")
         else:
-            st.error("You are NOT the admin.")
+            st.subheader("🔐 Admin Controls")
+            target_address = st.text_input("Target Address to Send ETH")
+            send_amount = st.number_input("Amount to Send (ETH)", min_value=0.001, step=0.001, format="%.5f")
+            if st.button("Send ETH"):
+                st.warning("⚡ Admin send will require Metamask interaction - to be enabled soon.")
+                st.info("Use Remix for now for admin 'sendExternal' function.")
 else:
-    st.warning("Please connect your Metamask Wallet.")
+    st.warning("🦊 Connect your wallet first to use the dApp.")
 
